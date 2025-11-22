@@ -4,332 +4,248 @@ import videos from '../../data/videos.json';
 export const runtime = 'edge';
 
 export async function getServerSideProps(context) {
-  const rawId = Array.isArray(context.params?.videoID)
-    ? context.params.videoID[0]
-    : context.params?.videoID || '';
+  const { videoID } = context.params || {};
+  const cleanId = (videoID || '').replace(/\.mp4$/i, '');
+  const video = videos.find((v) => v.id === cleanId);
 
-  // Hapus .mp4 (case-insensitive)
-  const sanitizedId = rawId.replace(/\.mp4$/i, '');
-
-  const video = Array.isArray(videos)
-    ? videos.find((v) => v.id === sanitizedId)
-    : null;
+  if (!video) {
+    return {
+      notFound: true
+    };
+  }
 
   return {
     props: {
-      video: video || null
+      video
     }
   };
 }
 
 function VideoPlayerPage({ video }) {
   const videoRef = useRef(null);
-  const [showContinueOverlay, setShowContinueOverlay] = useState(false);
-  const [hasShownGate, setHasShownGate] = useState(false);
-  const [showEndOverlay, setShowEndOverlay] = useState(false);
+  const [showTapOverlay, setShowTapOverlay] = useState(false);
+  const [hasResumed, setHasResumed] = useState(false);
+  const [showThankYou, setShowThankYou] = useState(false);
 
-  // Pastikan autoplay (muted) coba dijalankan saat mount
+  // Fase 1 & 2: Autoplay muted, lalu berhenti di detik ke-5 dan tampilkan overlay "Tap to Continue"
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.muted = true;
-    const playPromise = v.play();
+    const el = videoRef.current;
+    if (!el) return;
+
+    // Pastikan mulai dalam keadaan muted + autoplay
+    el.muted = true;
+    const playPromise = el.play();
     if (playPromise && typeof playPromise.then === 'function') {
       playPromise.catch(() => {
-        // Autoplay bisa saja diblok, biarkan user yang trigger play nanti
+        // Jika autoplay diblok, paksa user tap dengan tampilkan overlay
+        setShowTapOverlay(true);
       });
     }
-  }, []);
 
-  const handleTimeUpdate = () => {
-    const v = videoRef.current;
-    if (!v || hasShownGate || showEndOverlay) return;
+    const handleTimeUpdate = () => {
+      if (!hasResumed && el.currentTime >= 5) {
+        el.pause();
+        setShowTapOverlay(true);
+      }
+    };
 
-    // Gate di detik ke-5
-    if (v.currentTime >= 5) {
-      v.pause();
-      setShowContinueOverlay(true);
-      setHasShownGate(true);
+    el.addEventListener('timeupdate', handleTimeUpdate);
+
+    return () => {
+      el.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [hasResumed]);
+
+  // Fase 3: Klik overlay/container -> play + unmute
+  const handlePlayerClick = () => {
+    // Hanya respon saat masih di fase "Tap to Continue" dan belum fase "Terima Kasih"
+    if (!showTapOverlay || showThankYou) return;
+
+    const el = videoRef.current;
+    if (!el) return;
+
+    setShowTapOverlay(false);
+    setHasResumed(true);
+
+    el.muted = false;
+    const playPromise = el.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise.catch(() => {
+        // Kalau masih gagal meskipun sudah user-interaction, abaikan saja
+      });
     }
   };
 
-  const handleContinue = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.muted = false;
-    setShowContinueOverlay(false);
-    const playPromise = v.play();
-    if (playPromise && typeof playPromise.then === 'function') {
-      playPromise.catch(() => {
-        // Abaikan error play
-      });
-    }
-    // Event click tidak di-stopPropagation, biarkan bubbling
-  };
-
+  // Fase 4: Selesai -> Overlay "Terima Kasih"
   const handleEnded = () => {
-    setShowEndOverlay(true);
-    setShowContinueOverlay(false);
+    setShowTapOverlay(false);
+    setShowThankYou(true);
   };
-
-  const handleReplay = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    setShowEndOverlay(false);
-    setShowContinueOverlay(false);
-    setHasShownGate(false);
-    v.currentTime = 0;
-    v.muted = true;
-    const playPromise = v.play();
-    if (playPromise && typeof playPromise.then === 'function') {
-      playPromise.catch(() => {});
-    }
-  };
-
-  if (!video) {
-    return (
-      <div className="not-found">
-        <p>Video Not Found</p>
-        <style jsx>{`
-          .not-found {
-            height: 100vh;
-            width: 100vw;
-            background: #000;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-              sans-serif;
-          }
-        `}</style>
-      </div>
-    );
-  }
 
   return (
-    <div className="page">
-      <video
-        ref={videoRef}
-        src={video.source}
-        className="video"
-        playsInline
-        autoPlay
-        muted
-        controls={false}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleEnded}
-      />
+    <div className="player-root">
+      <div className="player-shell" onClick={handlePlayerClick}>
+        <video
+          ref={videoRef}
+          src={video.source}
+          className="player-video"
+          autoPlay
+          muted
+          playsInline
+          onEnded={handleEnded}
+        />
 
-      {showContinueOverlay && !showEndOverlay && (
-        <div className="overlay continue-overlay">
-          <button
-            type="button"
-            className="continue-button"
-            onClick={handleContinue}
-          >
-            Tap to Continue Watching
-          </button>
-        </div>
-      )}
-
-      {showEndOverlay && (
-        <div className="overlay end-overlay">
-          <div className="end-content">
-            <h1>Terima Kasih Sudah Menonton</h1>
-            <p className="transparency">
-              Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami untuk
-              menjaga server. Kesabaran Anda sangat kami hargai dan kami harap
-              layanan kami sepadan dengan usaha Anda.
-            </p>
-            <div className="socials">
-              <a
-                href="https://twitter.com/intent/tweet"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Twitter
-              </a>
-              <a
-                href="https://t.me/share/url"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Telegram
-              </a>
-              <a
-                href="https://www.facebook.com/sharer/sharer.php"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Facebook
-              </a>
+        {showTapOverlay && (
+          <div className="overlay overlay-tap">
+            <div className="overlay-content">
+              <p>Tap untuk melanjutkan &amp; menyalakan suara</p>
+              <span className="overlay-sub">Sentuh di mana saja pada layar</span>
             </div>
-            <button
-              type="button"
-              className="replay-button"
-              onClick={handleReplay}
-            >
-              Replay
-            </button>
           </div>
-        </div>
-      )}
+        )}
+
+        {showThankYou && (
+          <div className="overlay overlay-thankyou">
+            <div className="overlay-content">
+              <h1>Terima Kasih</h1>
+              <p className="overlay-message">
+                Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami
+                untuk menjaga server tetap hidup dan konten tetap gratis.
+              </p>
+              <div className="social-buttons">
+                <a
+                  href="https://twitter.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="social-btn"
+                >
+                  Twitter
+                </a>
+                <a
+                  href="https://instagram.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="social-btn"
+                >
+                  Instagram
+                </a>
+                <a
+                  href="https://t.me"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="social-btn"
+                >
+                  Telegram
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <style jsx>{`
-        .page {
-          position: relative;
+        .player-root {
           width: 100vw;
           height: 100vh;
+          display: flex;
+          justify-content: center;
+          align-items: center;
           background: #000;
-          overflow: hidden;
         }
 
-        .video {
+        .player-shell {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          max-width: 900px;
+          max-height: 100vh;
+          cursor: pointer;
+        }
+
+        .player-video {
           width: 100%;
           height: 100%;
           object-fit: contain;
           background: #000;
         }
 
-        /* Sembunyikan kontrol default di WebKit */
-        .video::-webkit-media-controls {
-          display: none !important;
-          opacity: 0;
-        }
-
         .overlay {
           position: absolute;
           inset: 0;
           display: flex;
-          align-items: center;
           justify-content: center;
+          align-items: center;
+          text-align: center;
           padding: 1.5rem;
-          box-sizing: border-box;
         }
 
-        .continue-overlay {
+        .overlay-tap {
           background: radial-gradient(
             circle at center,
-            rgba(0, 0, 0, 0.75),
-            rgba(0, 0, 0, 0.9)
+            rgba(0, 0, 0, 0.4),
+            rgba(0, 0, 0, 0.85)
           );
         }
 
-        .continue-button {
-          padding: 0.9rem 1.6rem;
-          border-radius: 999px;
-          border: none;
-          font-size: 1rem;
-          font-weight: 600;
-          cursor: pointer;
-          background: linear-gradient(135deg, #00e0ff, #00ff85);
-          color: #000;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-          transition: transform 0.15s ease, box-shadow 0.15s ease,
-            opacity 0.15s ease;
-        }
-
-        .continue-button:hover {
-          transform: translateY(-1px) scale(1.03);
-          box-shadow: 0 14px 40px rgba(0, 0, 0, 0.65);
-          opacity: 0.95;
-        }
-
-        .continue-button:active {
-          transform: translateY(0) scale(0.98);
-          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
-        }
-
-        .end-overlay {
+        .overlay-thankyou {
           background: linear-gradient(
-            to top,
-            rgba(0, 0, 0, 0.9),
-            rgba(0, 0, 0, 0.7)
+            to bottom,
+            rgba(0, 0, 0, 0.8),
+            rgba(0, 0, 0, 0.95)
           );
         }
 
-        .end-content {
-          max-width: 640px;
-          text-align: center;
-          color: white;
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-            sans-serif;
+        .overlay-content {
+          max-width: 480px;
         }
 
-        .end-content h1 {
-          font-size: 1.8rem;
-          margin-bottom: 1rem;
+        .overlay-content p {
+          margin-bottom: 0.5rem;
         }
 
-        .transparency {
+        .overlay-sub {
+          font-size: 0.85rem;
+          opacity: 0.8;
+        }
+
+        .overlay-message {
+          margin: 0.75rem 0 1.5rem;
           font-size: 0.95rem;
-          line-height: 1.6;
-          color: rgba(255, 255, 255, 0.85);
-          margin-bottom: 1.75rem;
+          line-height: 1.5;
+          opacity: 0.9;
         }
 
-        .socials {
+        .social-buttons {
           display: flex;
           flex-wrap: wrap;
-          gap: 0.75rem;
           justify-content: center;
-          margin-bottom: 1.5rem;
+          gap: 0.75rem;
         }
 
-        .socials a {
-          min-width: 96px;
-          padding: 0.55rem 0.9rem;
+        .social-btn {
+          padding: 0.5rem 1.1rem;
           border-radius: 999px;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          color: rgba(255, 255, 255, 0.9);
-          text-decoration: none;
-          font-size: 0.85rem;
-          letter-spacing: 0.02em;
+          border: 1px solid rgba(255, 255, 255, 0.45);
+          font-size: 0.9rem;
           text-transform: uppercase;
-          background: rgba(0, 0, 0, 0.4);
-          backdrop-filter: blur(10px);
-          transition: background 0.15s ease, transform 0.15s ease,
-            border-color 0.15s ease;
+          letter-spacing: 0.04em;
+          background: rgba(255, 255, 255, 0.05);
+          transition: background 0.2s ease, transform 0.1s ease;
         }
 
-        .socials a:hover {
-          background: rgba(255, 255, 255, 0.12);
-          border-color: rgba(255, 255, 255, 0.35);
+        .social-btn:hover {
+          background: rgba(255, 255, 255, 0.14);
           transform: translateY(-1px);
         }
 
-        .replay-button {
-          padding: 0.7rem 1.4rem;
-          border-radius: 999px;
-          border: none;
-          font-size: 0.95rem;
-          font-weight: 600;
-          cursor: pointer;
-          background: white;
-          color: #000;
-          transition: background 0.15s ease, transform 0.15s ease,
-            box-shadow 0.15s ease;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-        }
-
-        .replay-button:hover {
-          background: #f5f5f5;
-          transform: translateY(-1px);
-          box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7);
-        }
-
-        .replay-button:active {
-          transform: translateY(0);
-          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.65);
-        }
-
-        @media (max-width: 600px) {
-          .end-content h1 {
-            font-size: 1.4rem;
-          }
-          .transparency {
+        @media (max-width: 768px) {
+          .overlay-message {
             font-size: 0.85rem;
+          }
+
+          .social-btn {
+            font-size: 0.8rem;
+            padding: 0.45rem 0.9rem;
           }
         }
       `}</style>
