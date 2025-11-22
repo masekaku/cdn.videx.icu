@@ -1,25 +1,33 @@
-// pages/index.js
+export const runtime = 'edge';
+
 import videos from '../data/videos.json';
 
-export default function Home() {
-  // Gateway tanpa UI
-  return null;
-}
-
 export async function getServerSideProps() {
-  if (!Array.isArray(videos) || videos.length === 0) {
+  const total = Array.isArray(videos) ? videos.length : 0;
+
+  if (total === 0) {
     return {
-      notFound: true
+      redirect: {
+        destination: '/f/unknown.mp4',
+        permanent: false,
+        statusCode: 307
+      }
     };
   }
 
-  const randomIndex = Math.floor(Math.random() * videos.length);
-  const randomVideo = videos[randomIndex];
+  const randomIndex = Math.floor(Math.random() * total);
+  const video = videos[randomIndex];
 
   return {
     redirect: {
-      destination: `/f/${randomVideo.id}.mp4`,
-      permanent: false // Next akan mengirim 307 untuk redirect sementara
+      destination: `/f/${video.id}.mp4`,
+      permanent: false,
+      statusCode: 307
     }
   };
+}
+
+export default function Home() {
+  // Tidak ada UI
+  return null;
 }
