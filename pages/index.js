@@ -3,26 +3,24 @@ import videos from '../data/videos.json';
 export const runtime = 'edge';
 
 export async function getServerSideProps() {
-  if (!Array.isArray(videos) || videos.length === 0) {
+  const randomIndex = Math.floor(Math.random() * videos.length);
+  const video = videos[randomIndex];
+
+  if (!video) {
     return {
       notFound: true
     };
   }
 
-  const randomIndex = Math.floor(Math.random() * videos.length);
-  const video = videos[randomIndex];
-
   return {
     redirect: {
       destination: `/f/${video.id}.mp4`,
-      permanent: false,
-      statusCode: 307
+      permanent: false // Next akan menggunakan status 307 untuk redirect non-permanent
     }
   };
 }
 
-function IndexPage() {
+export default function IndexPage() {
+  // User tidak melihat apa-apa, langsung redirect dari getServerSideProps
   return null;
 }
-
-export default IndexPage;
