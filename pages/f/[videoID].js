@@ -1,185 +1,340 @@
-export const runtime = 'edge';
-
 import { useEffect, useRef, useState } from 'react';
-import Head from 'next/head';
 import videos from '../../data/videos.json';
 
+export const runtime = 'edge';
+
 export async function getServerSideProps(context) {
-  const rawParam = (context.params?.videoID || '').toString();
+  const rawId = Array.isArray(context.params?.videoID)
+    ? context.params.videoID[0]
+    : context.params?.videoID || '';
 
-  // Hapus akhiran .mp4 (case-insensitive) bila ada
-  const cleanId = rawParam.replace(/\.mp4$/i, '');
+  // Hapus .mp4 (case-insensitive)
+  const sanitizedId = rawId.replace(/\.mp4$/i, '');
 
-  const video =
-    Array.isArray(videos) && cleanId
-      ? videos.find((v) => v.id === cleanId) || null
-      : null;
+  const video = Array.isArray(videos)
+    ? videos.find((v) => v.id === sanitizedId)
+    : null;
 
   return {
     props: {
-      video,
-      requestedId: cleanId || rawParam
+      video: video || null
     }
   };
 }
 
-export default function VideoPage({ video, requestedId }) {
+function VideoPlayerPage({ video }) {
   const videoRef = useRef(null);
   const [showContinueOverlay, setShowContinueOverlay] = useState(false);
-  const [hasInteracted, setHasInteracted] = useState(false);
+  const [hasShownGate, setHasShownGate] = useState(false);
   const [showEndOverlay, setShowEndOverlay] = useState(false);
 
-  // Pastikan video mencoba autoplay saat source berubah
+  // Pastikan autoplay (muted) coba dijalankan saat mount
   useEffect(() => {
-    setShowContinueOverlay(false);
-    setHasInteracted(false);
-    setShowEndOverlay(false);
-
-    const vid = videoRef.current;
-    if (vid) {
-      vid.muted = true;
-      const playPromise = vid.play();
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {
-          // Autoplay bisa gagal di beberapa browser; abaikan error
-        });
-      }
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = true;
+    const playPromise = v.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise.catch(() => {
+        // Autoplay bisa saja diblok, biarkan user yang trigger play nanti
+      });
     }
-  }, [video?.source]);
+  }, []);
 
-  const handleTimeUpdate = (event) => {
-    if (!video) return;
-    if (hasInteracted || showContinueOverlay || showEndOverlay) return;
+  const handleTimeUpdate = () => {
+    const v = videoRef.current;
+    if (!v || hasShownGate || showEndOverlay) return;
 
-    const current = event.currentTarget.currentTime || 0;
-
-    // Hook di detik ke-5
-    if (current >= 5) {
-      event.currentTarget.pause();
+    // Gate di detik ke-5
+    if (v.currentTime >= 5) {
+      v.pause();
       setShowContinueOverlay(true);
+      setHasShownGate(true);
     }
   };
 
-  const handleContinueClick = () => {
-    // JANGAN stopPropagation / preventDefault agar klik tetap bubble
-    setHasInteracted(true);
+  const handleContinue = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = false;
     setShowContinueOverlay(false);
-
-    const vid = videoRef.current;
-    if (vid) {
-      vid.muted = false;
-      const playPromise = vid.play();
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {});
-      }
+    const playPromise = v.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise.catch(() => {
+        // Abaikan error play
+      });
     }
+    // Event click tidak di-stopPropagation, biarkan bubbling
   };
 
   const handleEnded = () => {
     setShowEndOverlay(true);
+    setShowContinueOverlay(false);
   };
 
   const handleReplay = () => {
-    const vid = videoRef.current;
-    if (vid) {
-      vid.currentTime = 0;
-      const playPromise = vid.play();
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {});
-      }
-    }
+    const v = videoRef.current;
+    if (!v) return;
     setShowEndOverlay(false);
+    setShowContinueOverlay(false);
+    setHasShownGate(false);
+    v.currentTime = 0;
+    v.muted = true;
+    const playPromise = v.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise.catch(() => {});
+    }
   };
 
-  // 404 sederhana bila video tidak ditemukan
   if (!video) {
     return (
-      <div className="video-page not-found">
-        <Head>
-          <title>404 - Video tidak ditemukan</title>
-        </Head>
-        <div className="end-overlay">
-          <div className="end-content">
-            <h1>404 - Video tidak ditemukan</h1>
-            {requestedId ? (
-              <p className="end-message">ID yang diminta: {requestedId}</p>
-            ) : null}
-          </div>
-        </div>
+      <div className="not-found">
+        <p>Video Not Found</p>
+        <style jsx>{`
+          .not-found {
+            height: 100vh;
+            width: 100vw;
+            background: #000;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+              sans-serif;
+          }
+        `}</style>
       </div>
     );
   }
 
   return (
-    <div className="video-page">
-      <Head>
-        <title>Video - {video.id}</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
-
+    <div className="page">
       <video
         ref={videoRef}
-        className="video-element"
         src={video.source}
+        className="video"
+        playsInline
         autoPlay
         muted
-        playsInline
         controls={false}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
       />
 
-      {/* Overlay Hook di detik ke-5 */}
       {showContinueOverlay && !showEndOverlay && (
-        <div className="overlay" onClick={handleContinueClick}>
-          <div className="overlay-content">
-            <p>Tap untuk melanjutkan menonton</p>
-          </div>
+        <div className="overlay continue-overlay">
+          <button
+            type="button"
+            className="continue-button"
+            onClick={handleContinue}
+          >
+            Tap to Continue Watching
+          </button>
         </div>
       )}
 
-      {/* End Screen */}
       {showEndOverlay && (
-        <div className="end-overlay">
+        <div className="overlay end-overlay">
           <div className="end-content">
             <h1>Terima Kasih Sudah Menonton</h1>
-            <p className="end-message">
+            <p className="transparency">
               Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami untuk
               menjaga server. Kesabaran Anda sangat kami hargai dan kami harap
               layanan kami sepadan dengan usaha Anda.
             </p>
-            <div className="end-actions">
+            <div className="socials">
               <a
-                href="https://twitter.com"
+                href="https://twitter.com/intent/tweet"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn"
               >
                 Twitter
               </a>
               <a
-                href="https://t.me"
+                href="https://t.me/share/url"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn"
               >
                 Telegram
               </a>
               <a
-                href="https://facebook.com"
+                href="https://www.facebook.com/sharer/sharer.php"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn"
               >
                 Facebook
               </a>
-              <button type="button" onClick={handleReplay} className="btn primary">
-                Replay
-              </button>
             </div>
+            <button
+              type="button"
+              className="replay-button"
+              onClick={handleReplay}
+            >
+              Replay
+            </button>
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        .page {
+          position: relative;
+          width: 100vw;
+          height: 100vh;
+          background: #000;
+          overflow: hidden;
+        }
+
+        .video {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          background: #000;
+        }
+
+        /* Sembunyikan kontrol default di WebKit */
+        .video::-webkit-media-controls {
+          display: none !important;
+          opacity: 0;
+        }
+
+        .overlay {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1.5rem;
+          box-sizing: border-box;
+        }
+
+        .continue-overlay {
+          background: radial-gradient(
+            circle at center,
+            rgba(0, 0, 0, 0.75),
+            rgba(0, 0, 0, 0.9)
+          );
+        }
+
+        .continue-button {
+          padding: 0.9rem 1.6rem;
+          border-radius: 999px;
+          border: none;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+          background: linear-gradient(135deg, #00e0ff, #00ff85);
+          color: #000;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+          transition: transform 0.15s ease, box-shadow 0.15s ease,
+            opacity 0.15s ease;
+        }
+
+        .continue-button:hover {
+          transform: translateY(-1px) scale(1.03);
+          box-shadow: 0 14px 40px rgba(0, 0, 0, 0.65);
+          opacity: 0.95;
+        }
+
+        .continue-button:active {
+          transform: translateY(0) scale(0.98);
+          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+        }
+
+        .end-overlay {
+          background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.9),
+            rgba(0, 0, 0, 0.7)
+          );
+        }
+
+        .end-content {
+          max-width: 640px;
+          text-align: center;
+          color: white;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+            sans-serif;
+        }
+
+        .end-content h1 {
+          font-size: 1.8rem;
+          margin-bottom: 1rem;
+        }
+
+        .transparency {
+          font-size: 0.95rem;
+          line-height: 1.6;
+          color: rgba(255, 255, 255, 0.85);
+          margin-bottom: 1.75rem;
+        }
+
+        .socials {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.75rem;
+          justify-content: center;
+          margin-bottom: 1.5rem;
+        }
+
+        .socials a {
+          min-width: 96px;
+          padding: 0.55rem 0.9rem;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          color: rgba(255, 255, 255, 0.9);
+          text-decoration: none;
+          font-size: 0.85rem;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(10px);
+          transition: background 0.15s ease, transform 0.15s ease,
+            border-color 0.15s ease;
+        }
+
+        .socials a:hover {
+          background: rgba(255, 255, 255, 0.12);
+          border-color: rgba(255, 255, 255, 0.35);
+          transform: translateY(-1px);
+        }
+
+        .replay-button {
+          padding: 0.7rem 1.4rem;
+          border-radius: 999px;
+          border: none;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          background: white;
+          color: #000;
+          transition: background 0.15s ease, transform 0.15s ease,
+            box-shadow 0.15s ease;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        }
+
+        .replay-button:hover {
+          background: #f5f5f5;
+          transform: translateY(-1px);
+          box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7);
+        }
+
+        .replay-button:active {
+          transform: translateY(0);
+          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.65);
+        }
+
+        @media (max-width: 600px) {
+          .end-content h1 {
+            font-size: 1.4rem;
+          }
+          .transparency {
+            font-size: 0.85rem;
+          }
+        }
+      `}</style>
     </div>
   );
 }
+
+export default VideoPlayerPage;
