@@ -1,144 +1,22 @@
-/* Reset dasar */
-*,
-*::before,
-*::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-/* Pastikan full height */
 html,
 body,
 #__next {
   width: 100%;
   height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
-/* Hilangkan scrollbar & set background hitam */
+html,
 body {
-  background-color: #000;
-  color: #fff;
   overflow: hidden;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-}
-
-/* Hilangkan scrollbar di berbagai browser */
-body::-webkit-scrollbar {
-  display: none;
-}
-body {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* Layout halaman video full-screen */
-.video-page {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  background-color: #000;
-}
-
-/* Elemen video memenuhi layar */
-.video-element {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background-color: #000;
-}
-
-/* Overlay umum */
-.overlay,
-.end-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  text-align: center;
-  color: #fff;
-}
-
-/* Overlay hook (tap to continue) */
-.overlay {
-  background: rgba(0, 0, 0, 0.5);
-}
-
-/* Overlay end screen */
-.end-overlay {
-  background: rgba(0, 0, 0, 0.75);
-}
-
-.overlay-content,
-.end-content {
-  max-width: 480px;
-  margin: 0 auto;
-}
-
-.overlay-content p {
-  font-size: 1.2rem;
-}
-
-/* Teks end screen */
-.end-content h1 {
-  margin-bottom: 1rem;
-  font-size: 1.5rem;
-}
-
-.end-message {
-  font-size: 0.95rem;
-  line-height: 1.5;
-  margin-bottom: 1.5rem;
-  opacity: 0.9;
-}
-
-/* Tombol aksi end screen */
-.end-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: center;
-}
-
-/* Style tombol/link */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 0.9rem;
-  font-size: 0.9rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  text-decoration: none;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    transform 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.4);
-  transform: translateY(-1px);
-}
-
-.btn.primary {
-  background: #ffffff;
-  color: #000000;
-  border-color: #ffffff;
-}
-
-.btn.primary:hover {
-  background: #f0f0f0;
-}
-
-/* Sedikit penyesuaian untuk halaman 404 custom */
-.video-page.not-found .end-overlay {
   background: #000;
+  color: #fff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
