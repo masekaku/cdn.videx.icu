@@ -1,0 +1,16 @@
+[
+  {
+    "id": "sample-1",
+    "title": "Sample Video 1 - City Timelapse",
+    "description": "Timelapse kota di malam hari untuk demonstrasi player.",
+    "src": "/videos/sample-1.mp4",
+    "poster": "/videos/sample-1.jpg"
+  },
+  {
+    "id": "sample-2",
+    "title": "Sample Video 2 - Nature Journey",
+    "description": "Perjalanan singkat melewati pemandangan alam.",
+    "src": "/videos/sample-2.mp4",
+    "poster": "/videos/sample-2.jpg"
+  }
+]
