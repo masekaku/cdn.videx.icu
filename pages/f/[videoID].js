@@ -1,86 +1,78 @@
-// pages/f/[videoID].js
+export const runtime = 'edge';
+
 import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import videos from '../../data/videos.json';
 
 export async function getServerSideProps(context) {
-  const rawParam = Array.isArray(context.params.videoID)
-    ? context.params.videoID[0]
-    : context.params.videoID;
+  const rawParam = (context.params?.videoID || '').toString();
 
-  // Sanitasi: hapus .mp4 di akhir (case-insensitive)
-  const cleanedId = rawParam.replace(/\.mp4$/i, '');
+  // Hapus akhiran .mp4 (case-insensitive) bila ada
+  const cleanId = rawParam.replace(/\.mp4$/i, '');
 
-  const video = videos.find((v) => v.id === cleanedId);
-
-  if (!video) {
-    return { notFound: true };
-  }
+  const video =
+    Array.isArray(videos) && cleanId
+      ? videos.find((v) => v.id === cleanId) || null
+      : null;
 
   return {
     props: {
-      video
+      video,
+      requestedId: cleanId || rawParam
     }
   };
 }
 
-export default function VideoPlayerPage({ video }) {
+export default function VideoPage({ video, requestedId }) {
   const videoRef = useRef(null);
-
   const [showContinueOverlay, setShowContinueOverlay] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
   const [showEndOverlay, setShowEndOverlay] = useState(false);
-  const [hasUserInteracted, setHasUserInteracted] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
-  const [showControls, setShowControls] = useState(false);
 
-  // Autoplay + retention hook 5 detik
+  // Pastikan video mencoba autoplay saat source berubah
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-
-    let timeoutId;
-
-    const run = async () => {
-      try {
-        // Coba autoplay (muted)
-        await el.play();
-      } catch (err) {
-        // Jika autoplay diblok, langsung munculkan overlay "Tap to Continue"
-        setShowContinueOverlay(true);
-        return;
-      }
-
-      // Retention hook di detik ke-5
-      timeoutId = window.setTimeout(() => {
-        if (!hasUserInteracted && !el.paused) {
-          el.pause();
-          setShowContinueOverlay(true);
-        }
-      }, 5000);
-    };
-
-    run();
-
-    return () => {
-      if (timeoutId) window.clearTimeout(timeoutId);
-    };
-  }, [hasUserInteracted]);
-
-  const handleContinue = () => {
-    const el = videoRef.current;
-    if (!el) return;
-
-    setHasUserInteracted(true);
     setShowContinueOverlay(false);
-    setIsMuted(false);
-    setShowControls(true);
+    setHasInteracted(false);
+    setShowEndOverlay(false);
 
-    // Jangan blok bubbling (tidak ada event.stopPropagation di sini)
-    el
-      .play()
-      .catch(() => {
-        // Silent fail jika play() tetap diblok
-      });
+    const vid = videoRef.current;
+    if (vid) {
+      vid.muted = true;
+      const playPromise = vid.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {
+          // Autoplay bisa gagal di beberapa browser; abaikan error
+        });
+      }
+    }
+  }, [video?.source]);
+
+  const handleTimeUpdate = (event) => {
+    if (!video) return;
+    if (hasInteracted || showContinueOverlay || showEndOverlay) return;
+
+    const current = event.currentTarget.currentTime || 0;
+
+    // Hook di detik ke-5
+    if (current >= 5) {
+      event.currentTarget.pause();
+      setShowContinueOverlay(true);
+    }
+  };
+
+  const handleContinueClick = () => {
+    // JANGAN stopPropagation / preventDefault agar klik tetap bubble
+    setHasInteracted(true);
+    setShowContinueOverlay(false);
+
+    const vid = videoRef.current;
+    if (vid) {
+      vid.muted = false;
+      const playPromise = vid.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    }
   };
 
   const handleEnded = () => {
@@ -88,367 +80,106 @@ export default function VideoPlayerPage({ video }) {
   };
 
   const handleReplay = () => {
-    const el = videoRef.current;
-    if (!el) return;
-
+    const vid = videoRef.current;
+    if (vid) {
+      vid.currentTime = 0;
+      const playPromise = vid.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    }
     setShowEndOverlay(false);
-    el.currentTime = 0;
-    el
-      .play()
-      .catch(() => {
-        // Silent fail
-      });
   };
 
+  // 404 sederhana bila video tidak ditemukan
+  if (!video) {
+    return (
+      <div className="video-page not-found">
+        <Head>
+          <title>404 - Video tidak ditemukan</title>
+        </Head>
+        <div className="end-overlay">
+          <div className="end-content">
+            <h1>404 - Video tidak ditemukan</h1>
+            {requestedId ? (
+              <p className="end-message">ID yang diminta: {requestedId}</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <>
+    <div className="video-page">
       <Head>
-        <title>{video.title} | Modern Video Player</title>
-        <meta name="description" content={video.description || video.title} />
+        <title>Video - {video.id}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
-      <div className="page">
-        <main className="player-container">
-          <div className="video-shell">
-            <video
-              ref={videoRef}
-              className="video-element"
-              src={video.src}
-              poster={video.poster}
-              playsInline
-              autoPlay
-              muted={isMuted}
-              controls={showControls}
-              onEnded={handleEnded}
-            />
+      <video
+        ref={videoRef}
+        className="video-element"
+        src={video.source}
+        autoPlay
+        muted
+        playsInline
+        controls={false}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
+      />
 
-            {/* Overlay "Tap to Continue" pada detik ke-5 */}
-            {showContinueOverlay && !showEndOverlay && (
-              <div className="overlay continue-overlay" onClick={handleContinue}>
-                <div className="overlay-inner">
-                  <h2 className="overlay-title">Tap to Continue</h2>
-                  <p className="overlay-text">
-                    Video akan dilanjutkan tanpa mute dan dengan kontrol penuh
-                    setelah Anda menyentuh layar.
-                  </p>
-                  <button
-                    type="button"
-                    className="primary-button"
-                    onClick={handleContinue}
-                  >
-                    Lanjutkan Menonton
-                  </button>
-                </div>
-              </div>
-            )}
+      {/* Overlay Hook di detik ke-5 */}
+      {showContinueOverlay && !showEndOverlay && (
+        <div className="overlay" onClick={handleContinueClick}>
+          <div className="overlay-content">
+            <p>Tap untuk melanjutkan menonton</p>
+          </div>
+        </div>
+      )}
 
-            {/* End Screen Overlay */}
-            {showEndOverlay && (
-              <div className="overlay end-overlay">
-                <div className="overlay-inner end-inner">
-                  <h2 className="end-title">Terima Kasih Sudah Menonton</h2>
-                  <p className="end-message">
-                    Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami
-                    untuk menjaga server. Kesabaran Anda sangat kami hargai dan
-                    kami harap layanan kami sepadan dengan usaha Anda.
-                  </p>
-
-                  <div className="social-links">
-                    <a
-                      href="https://twitter.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="social-button"
-                    >
-                      Twitter
-                    </a>
-                    <a
-                      href="https://t.me"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="social-button"
-                    >
-                      Telegram
-                    </a>
-                    <a
-                      href="https://facebook.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="social-button"
-                    >
-                      Facebook
-                    </a>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={handleReplay}
-                  >
-                    Replay Video
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Informasi singkat video untuk konteks & kredibilitas */}
-            <div className="video-meta">
-              <h1 className="video-title">{video.title}</h1>
-              {video.description && (
-                <p className="video-description">{video.description}</p>
-              )}
+      {/* End Screen */}
+      {showEndOverlay && (
+        <div className="end-overlay">
+          <div className="end-content">
+            <h1>Terima Kasih Sudah Menonton</h1>
+            <p className="end-message">
+              Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami untuk
+              menjaga server. Kesabaran Anda sangat kami hargai dan kami harap
+              layanan kami sepadan dengan usaha Anda.
+            </p>
+            <div className="end-actions">
+              <a
+                href="https://twitter.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+              >
+                Twitter
+              </a>
+              <a
+                href="https://t.me"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+              >
+                Telegram
+              </a>
+              <a
+                href="https://facebook.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+              >
+                Facebook
+              </a>
+              <button type="button" onClick={handleReplay} className="btn primary">
+                Replay
+              </button>
             </div>
           </div>
-        </main>
-
-        <style jsx>{`
-          .page {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1.5rem;
-            background: radial-gradient(
-                circle at top,
-                rgba(56, 189, 248, 0.18),
-                transparent 60%
-              ),
-              radial-gradient(
-                circle at bottom,
-                rgba(129, 140, 248, 0.16),
-                transparent 55%
-              ),
-              #050510;
-          }
-
-          .player-container {
-            width: 100%;
-            max-width: 1080px;
-          }
-
-          .video-shell {
-            position: relative;
-            width: 100%;
-            background: #000;
-            border-radius: 1rem;
-            overflow: hidden;
-            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.75);
-          }
-
-          .video-element {
-            display: block;
-            width: 100%;
-            height: auto;
-            aspect-ratio: 16 / 9;
-            background-color: #000;
-          }
-
-          .overlay {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1.5rem;
-            background: radial-gradient(
-                circle at center,
-                rgba(15, 23, 42, 0.95),
-                rgba(15, 23, 42, 0.99)
-              );
-            color: #f9fafb;
-            text-align: center;
-          }
-
-          .overlay-inner {
-            width: 100%;
-            max-width: 420px;
-            padding: 1.75rem 1.5rem;
-            border-radius: 0.75rem;
-            background: rgba(15, 23, 42, 0.95);
-            border: 1px solid rgba(148, 163, 184, 0.4);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.65);
-          }
-
-          .overlay-title {
-            font-size: 1.4rem;
-            font-weight: 700;
-            margin-bottom: 0.75rem;
-          }
-
-          .overlay-text {
-            font-size: 0.95rem;
-            line-height: 1.5;
-            color: #e5e7eb;
-            margin-bottom: 1.5rem;
-          }
-
-          .primary-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0.75rem 1.5rem;
-            border-radius: 999px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 0.95rem;
-            background: linear-gradient(
-              135deg,
-              #22c55e,
-              #16a34a 45%,
-              #0ea5e9 100%
-            );
-            color: #0b1220;
-            box-shadow: 0 10px 30px rgba(34, 197, 94, 0.45);
-            transition: transform 0.12s ease, box-shadow 0.12s ease,
-              filter 0.12s ease;
-            width: 100%;
-          }
-
-          .primary-button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 16px 40px rgba(34, 197, 94, 0.55);
-            filter: brightness(1.07);
-          }
-
-          .primary-button:active {
-            transform: translateY(0);
-            box-shadow: 0 10px 25px rgba(34, 197, 94, 0.45);
-          }
-
-          .end-inner {
-            max-width: 520px;
-          }
-
-          .end-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 0.9rem;
-          }
-
-          .end-message {
-            font-size: 0.97rem;
-            line-height: 1.7;
-            color: #e5e7eb;
-            margin-bottom: 1.5rem;
-            text-align: left;
-          }
-
-          .social-links {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-            margin-bottom: 1.25rem;
-          }
-
-          .social-button {
-            flex: 1 1 30%;
-            min-width: 90px;
-            padding: 0.5rem 0.75rem;
-            border-radius: 999px;
-            border: 1px solid rgba(148, 163, 184, 0.6);
-            font-size: 0.85rem;
-            font-weight: 500;
-            cursor: pointer;
-            background: rgba(15, 23, 42, 0.9);
-            color: #e5e7eb;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.12s ease, transform 0.12s ease,
-              border-color 0.12s ease;
-          }
-
-          .social-button:hover {
-            background: rgba(30, 64, 175, 0.95);
-            border-color: rgba(129, 140, 248, 0.9);
-            transform: translateY(-1px);
-          }
-
-          .secondary-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0.6rem 1.25rem;
-            border-radius: 999px;
-            border: none;
-            cursor: pointer;
-            font-weight: 500;
-            font-size: 0.9rem;
-            background: rgba(15, 23, 42, 0.9);
-            color: #e5e7eb;
-            border: 1px solid rgba(148, 163, 184, 0.6);
-            transition: background 0.12s ease, border-color 0.12s ease,
-              transform 0.12s ease;
-          }
-
-          .secondary-button:hover {
-            background: rgba(31, 41, 55, 0.95);
-            border-color: rgba(148, 163, 184, 0.9);
-            transform: translateY(-1px);
-          }
-
-          .video-meta {
-            padding: 1rem 1.25rem 1.3rem;
-            background: linear-gradient(
-              to right,
-              rgba(15, 23, 42, 0.96),
-              rgba(15, 23, 42, 0.98)
-            );
-            border-top: 1px solid rgba(31, 41, 55, 0.95);
-          }
-
-          .video-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-bottom: 0.35rem;
-          }
-
-          .video-description {
-            font-size: 0.9rem;
-            line-height: 1.5;
-            color: #9ca3af;
-          }
-
-          @media (max-width: 640px) {
-            .page {
-              padding: 0.75rem;
-            }
-
-            .video-shell {
-              border-radius: 0.75rem;
-            }
-
-            .overlay-inner {
-              padding: 1.25rem 1rem;
-            }
-
-            .end-message {
-              font-size: 0.9rem;
-            }
-
-            .social-links {
-              flex-direction: column;
-            }
-
-            .social-button {
-              width: 100%;
-            }
-
-            .video-meta {
-              padding: 0.85rem 0.85rem 1rem;
-            }
-
-            .video-title {
-              font-size: 1rem;
-            }
-
-            .video-description {
-              font-size: 0.85rem;
-            }
-          }
-        `}</style>
-      </div>
-    </>
+        </div>
+      )}
+    </div>
   );
 }
