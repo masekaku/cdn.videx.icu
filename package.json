@@ -1,19 +1,16 @@
 {
-  "name": "cf-edge-video-player",
+  "name": "modern-video-player-edge",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "cf-build": "npx @cloudflare/next-on-pages"
+    "build": "next-on-pages",
+    "start": "next start"
   },
   "dependencies": {
-    "next": "16.x",
-    "react": "18.x",
-    "react-dom": "18.x"
-  },
-  "devDependencies": {
-    "@cloudflare/next-on-pages": "latest"
+    "@cloudflare/next-on-pages": "^1.13.0",
+    "next": "16.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   }
 }
