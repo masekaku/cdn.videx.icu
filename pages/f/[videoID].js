@@ -1,93 +1,87 @@
 import { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
-import videos from '../../data/videos.json';
+import { useRouter } from 'next/router';
+// Import dari root (naik 2 level: pages -> f -> root)
+import videos from '../../videos.json';
 
-// Config Edge Runtime
-export const config = {
-  runtime: 'experimental-edge',
-};
+// CATATAN: Untuk Pages Router, 'runtime: edge' sering bermasalah dengan getServerSideProps 
+// jika file JSON besar. Kita gunakan default (Node.js) agar stabil membaca data.
+// export const config = { runtime: 'experimental-edge' }; 
 
 export async function getServerSideProps(context) {
   const { videoID } = context.params;
 
-  // 1. Sanitasi: Hapus string ".mp4" jika ada
+  // 1. Sanitasi: Hapus string ".mp4" agar sesuai dengan ID di database
   const cleanID = videoID.replace('.mp4', '');
 
-  // 2. Cari data di JSON
+  // 2. Cari data video
   const videoData = videos.find((v) => v.id === cleanID);
 
   if (!videoData) {
     return { props: { error: true } };
   }
 
-  return { props: { videoData } };
+  return { props: { videoData, videoID } };
 }
 
-export default function VideoPlayer({ videoData, error }) {
-  // State Management
+export default function VideoPlayer({ videoData, error, videoID }) {
   const videoRef = useRef(null);
-  const [showHookOverlay, setShowHookOverlay] = useState(false); // Overlay detik ke-5
-  const [showEndScreen, setShowEndScreen] = useState(false);     // Overlay akhir
-  const [hookTriggered, setHookTriggered] = useState(false);     // Agar hook cuma muncul sekali
+  const [showHookOverlay, setShowHookOverlay] = useState(false);
+  const [showEndScreen, setShowEndScreen] = useState(false);
+  const [hookTriggered, setHookTriggered] = useState(false);
 
-  // --- Logic 1: Autoplay Muted & Hide Controls ---
+  // --- 1. Autoplay Muted saat Start ---
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.muted = true;
-      videoRef.current.play().catch(e => console.log("Autoplay blocked", e));
+      videoRef.current.muted = true; // Wajib muted agar autoplay jalan di Chrome/Safari
+      videoRef.current.play().catch(e => console.log("Autoplay blocked:", e));
     }
   }, []);
 
-  // --- Logic 2: Hook Detik ke-5 ---
+  // --- 2. Logic Hook Detik ke-5 ---
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
-
-    // Cek jika waktu > 5 detik DAN belum pernah di-trigger
+    
+    // Jika waktu > 5 detik DAN belum pernah trigger hook
     if (videoRef.current.currentTime > 5 && !hookTriggered) {
-      videoRef.current.pause(); // Pause otomatis
-      setShowHookOverlay(true); // Munculkan overlay
-      setHookTriggered(true);   // Tandai sudah terjadi
+      videoRef.current.pause(); // Pause video
+      setShowHookOverlay(true); // Tampilkan Overlay Iklan
+      setHookTriggered(true);   // Kunci agar tidak muncul lagi
     }
   };
 
-  // --- Logic 3: Interaction (Continue Watching) ---
-  const handleContinue = (e) => {
-    // PENTING: Tidak ada e.stopPropagation() agar event bubbling ke script iklan
+  // --- 3. Logic Interaksi (Klik "Continue") ---
+  const handleContinue = () => {
+    // PENTING: Jangan gunakan e.stopPropagation() agar klik "tembus" ke script iklan
     setShowHookOverlay(false);
     
     if (videoRef.current) {
-      videoRef.current.muted = false; // Unmute
-      videoRef.current.play();        // Lanjut main
-      videoRef.current.controls = true; // Munculkan kontrol asli (opsional, user friendly)
+      videoRef.current.muted = false;   // Unmute suara
+      videoRef.current.controls = true; // Munculkan tombol pause/play asli
+      videoRef.current.play();          // Lanjut main
     }
   };
 
-  // --- Logic 4: End Screen ---
+  // --- 4. End Screen Logic ---
   const handleEnded = () => {
     setShowEndScreen(true);
-    // Exit fullscreen jika sedang fullscreen
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    }
+    if (document.fullscreenElement) document.exitFullscreen();
   };
 
   const handleReplay = () => {
     setShowEndScreen(false);
-    setHookTriggered(true); // Jangan trigger hook 5 detik lagi saat replay
+    // Reset trigger agar hook 5 detik bisa muncul lagi (opsional, set true jika ingin cuma 1x per sesi)
+    setHookTriggered(true); 
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
       videoRef.current.play();
     }
   };
 
-  // --- Error View ---
   if (error) {
     return (
-      <div className="error-container">
-        <h1>Video Not Found</h1>
-        <style jsx>{`
-          .error-container { display: flex; height: 100vh; justify-content: center; align-items: center; background: #000; color: white; font-family: sans-serif; }
-        `}</style>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#000', color: '#fff' }}>
+        <h2>Video Not Found</h2>
       </div>
     );
   }
@@ -95,7 +89,7 @@ export default function VideoPlayer({ videoData, error }) {
   return (
     <>
       <Head>
-        <title>Videy Player</title>
+        <title>{videoID || 'Video Player'}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
 
@@ -108,14 +102,14 @@ export default function VideoPlayer({ videoData, error }) {
           webkit-playsinline="true"
           onTimeUpdate={handleTimeUpdate}
           onEnded={handleEnded}
-          // Controls hidden di awal, bisa dimunculkan setelah interaksi jika mau
+          // Controls disembunyikan di awal
         />
 
-        {/* --- OVERLAY DETIK KE-5 --- */}
+        {/* --- OVERLAY HOOK (DETIK KE-5) --- */}
         {showHookOverlay && (
           <div className="overlay hook-overlay" onClick={handleContinue}>
-            <div className="tap-msg">
-              <div className="icon">▶</div>
+            <div className="msg-box">
+              <div className="play-icon">▶</div>
               <p>Tap to Continue Watching</p>
             </div>
           </div>
@@ -131,14 +125,14 @@ export default function VideoPlayer({ videoData, error }) {
                 <p>Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami untuk menjaga server. Kesabaran Anda sangat kami hargai dan kami harap layanan kami sepadan dengan usaha Anda.</p>
               </div>
 
-              <div className="social-buttons">
-                <a href="https://twitter.com/intent/tweet" target="_blank" rel="noreferrer" className="btn twitter">Twitter</a>
-                <a href="https://telegram.org" target="_blank" rel="noreferrer" className="btn telegram">Telegram</a>
-                <a href="https://facebook.com" target="_blank" rel="noreferrer" className="btn facebook">Facebook</a>
+              <div className="social-grid">
+                <a href="https://twitter.com/intent/tweet" target="_blank" className="btn tw">Twitter</a>
+                <a href="https://telegram.org" target="_blank" className="btn tg">Telegram</a>
+                <a href="https://facebook.com" target="_blank" className="btn fb">Facebook</a>
               </div>
 
               <button onClick={handleReplay} className="replay-btn">
-                ↻ Putar Ulang Video
+                ↻ Putar Ulang
               </button>
             </div>
           </div>
@@ -152,121 +146,94 @@ export default function VideoPlayer({ videoData, error }) {
             background: #000;
             overflow: hidden;
           }
-
           .video-element {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            display: block;
           }
-
-          /* General Overlay Styles */
+          
+          /* Overlay Styles */
           .overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 20;
             display: flex;
             justify-content: center;
             align-items: center;
-            background: rgba(0, 0, 0, 0.4); /* Semi transparan */
-            backdrop-filter: blur(2px);
+            background: rgba(0,0,0,0.5); /* Semi transparan */
+            backdrop-filter: blur(4px);
           }
 
-          /* Hook Overlay (Tap to Continue) */
+          /* Hook Overlay */
           .hook-overlay {
             cursor: pointer;
-            /* Pastikan event klik tembus/terdeteksi */
+            /* Membiarkan event bubbling */
           }
-          .tap-msg {
+          .msg-box {
             text-align: center;
-            color: #fff;
+            color: white;
             animation: pulse 1.5s infinite;
+            pointer-events: none; /* Klik tembus ke div parent (overlay) */
           }
-          .tap-msg .icon {
-            font-size: 50px;
-            margin-bottom: 10px;
-          }
-          .tap-msg p {
-            font-size: 18px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-          }
+          .play-icon { font-size: 60px; margin-bottom: 10px; }
+          .msg-box p { font-size: 20px; font-weight: bold; text-transform: uppercase; }
 
-          /* End Screen Overlay */
+          /* End Screen */
           .end-overlay {
-            background: rgba(0, 0, 0, 0.85); /* Lebih gelap */
+            background: rgba(0,0,0,0.9);
             flex-direction: column;
           }
           .end-content {
             width: 90%;
-            max-width: 500px;
+            max-width: 450px;
             text-align: center;
-            color: #fff;
+            color: white;
             font-family: sans-serif;
           }
-          .end-content h2 {
-            margin-bottom: 20px;
-            font-size: 24px;
-          }
-          
-          /* Pesan Transparansi */
           .transparency-msg {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255,255,255,0.1);
             padding: 15px;
             border-radius: 8px;
-            margin-bottom: 25px;
-            font-size: 14px;
+            margin: 20px 0;
+            font-size: 13px;
             line-height: 1.5;
-            color: #ddd;
-            border: 1px solid rgba(255,255,255,0.1);
+            color: #ccc;
+            border: 1px solid #333;
           }
-
-          /* Social Buttons */
-          .social-buttons {
+          .social-grid {
             display: flex;
-            justify-content: center;
             gap: 10px;
+            justify-content: center;
             margin-bottom: 25px;
           }
           .btn {
-            padding: 10px 20px;
-            border-radius: 5px;
-            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 4px;
             color: white;
-            font-weight: bold;
+            text-decoration: none;
             font-size: 14px;
-            transition: opacity 0.2s;
+            font-weight: bold;
           }
-          .btn:hover { opacity: 0.8; }
-          .twitter { background: #1DA1F2; }
-          .telegram { background: #0088cc; }
-          .facebook { background: #4267B2; }
-
-          /* Replay Button */
+          .tw { background: #1DA1F2; }
+          .tg { background: #0088cc; }
+          .fb { background: #4267B2; }
+          
           .replay-btn {
-            padding: 12px 30px;
-            background: #fff;
-            color: #000;
+            background: white;
+            color: black;
             border: none;
+            padding: 12px 30px;
             border-radius: 50px;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: transform 0.2s;
-          }
-          .replay-btn:active {
-            transform: scale(0.95);
           }
 
           @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
           }
         `}</style>
       </div>
