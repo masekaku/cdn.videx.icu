@@ -1,24 +1,33 @@
-import videos from '../data/videos.json';
+// Import dari root (naik 1 level dari folder pages)
+import videos from '../videos.json';
 
-// Config Edge Runtime
+// Config Runtime (Edge direkomendasikan untuk redirect cepat)
 export const config = {
   runtime: 'experimental-edge',
 };
 
 export async function getServerSideProps() {
-  // 1. Ambil 1 video acak langsung dari import (tanpa fs/fetch)
-  const randomVideo = videos[Math.floor(Math.random() * videos.length)];
+  try {
+    // 1. Ambil 1 video acak
+    const randomVideo = videos[Math.floor(Math.random() * videos.length)];
 
-  // 2. Redirect 307 (Temporary) ke format baru dengan akhiran .mp4
-  return {
-    redirect: {
-      destination: `/f/${randomVideo.id}.mp4`,
-      permanent: false,
-    },
-  };
+    // 2. Redirect 307 ke format baru dengan .mp4
+    if (randomVideo && randomVideo.id) {
+      return {
+        redirect: {
+          destination: `/f/${randomVideo.id}.mp4`,
+          permanent: false,
+        },
+      };
+    }
+    
+    return { props: {} };
+  } catch (e) {
+    return { props: {} };
+  }
 }
 
-// UI Return Null (Tanpa Tampilan)
+// UI Return Null (Blank)
 export default function Home() {
   return null;
 }
