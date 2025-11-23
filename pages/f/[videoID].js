@@ -1,21 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
-// Import dari root (naik 2 level: pages -> f -> root)
 import videos from '../../videos.json';
 
 export async function getServerSideProps(context) {
   const { videoID } = context.params;
-
-  // 1. Sanitasi: Hapus string ".mp4" dari URL agar sesuai ID di JSON
   const cleanID = videoID.replace('.mp4', '');
-
-  // 2. Cari data video
   const videoData = videos.find((v) => v.id === cleanID);
 
-  if (!videoData) {
-    return { props: { error: true } };
-  }
-
+  if (!videoData) return { props: { error: true } };
   return { props: { videoData, videoID } };
 }
 
@@ -25,19 +17,17 @@ export default function VideoPlayer({ videoData, error, videoID }) {
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [hookTriggered, setHookTriggered] = useState(false);
 
-  // --- Logic 1: Autoplay Muted ---
+  // --- Autoplay Muted ---
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.muted = true; // Muted agar autoplay jalan di browser modern
+      videoRef.current.muted = true;
       videoRef.current.play().catch(e => console.log("Autoplay blocked:", e));
     }
   }, []);
 
-  // --- Logic 2: Hook Detik ke-5 ---
+  // --- Hook Detik ke-5 ---
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
-    
-    // Trigger hanya jika lewat detik ke-5 DAN belum pernah ditrigger
     if (videoRef.current.currentTime > 5 && !hookTriggered) {
       videoRef.current.pause();
       setShowHookOverlay(true);
@@ -45,19 +35,24 @@ export default function VideoPlayer({ videoData, error, videoID }) {
     }
   };
 
-  // --- Logic 3: Continue Watching (Bubbling Enabled) ---
+  // --- Continue Watching + Pop-Under Smartlink ---
   const handleContinue = () => {
-    // Kita biarkan event klik "tembus" (bubbling) agar script iklan bisa mendeteksinya
     setShowHookOverlay(false);
-    
+
     if (videoRef.current) {
-      videoRef.current.muted = false;   // Unmute
-      videoRef.current.controls = true; // Munculkan kontrol
-      videoRef.current.play();          // Lanjut main
+      videoRef.current.muted = false;   // unmute
+      videoRef.current.controls = true; // show controls
+      videoRef.current.play();          // play langsung
+    }
+
+    // Trigger pop-under smartlink hanya 1x per session
+    if (!sessionStorage.getItem('popUnderTriggered')) {
+      window.open('https://smartlink.com/offer123', '_blank'); // aman karena user gesture
+      sessionStorage.setItem('popUnderTriggered', 'true');
     }
   };
 
-  // --- Logic 4: End Screen ---
+  // --- End Screen ---
   const handleEnded = () => {
     setShowEndScreen(true);
     if (document.fullscreenElement) document.exitFullscreen();
@@ -65,7 +60,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
 
   const handleReplay = () => {
     setShowEndScreen(false);
-    setHookTriggered(true); // Set true agar hook 5 detik tidak mengganggu replay
+    setHookTriggered(true);
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
       videoRef.current.play();
@@ -116,20 +111,15 @@ export default function VideoPlayer({ videoData, error, videoID }) {
           <div className="overlay end-overlay">
             <div className="end-content">
               <h2>Terima Kasih Sudah Menonton</h2>
-              
               <div className="transparency-msg">
                 <p>Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami untuk menjaga server. Kesabaran Anda sangat kami hargai dan kami harap layanan kami sepadan dengan usaha Anda.</p>
               </div>
-
               <div className="social-grid">
                 <a href="https://twitter.com/intent/tweet" target="_blank" className="btn tw">Twitter</a>
                 <a href="https://telegram.org" target="_blank" className="btn tg">Telegram</a>
                 <a href="https://facebook.com" target="_blank" className="btn fb">Facebook</a>
               </div>
-
-              <button onClick={handleReplay} className="replay-btn">
-                ↻ Putar Ulang
-              </button>
+              <button onClick={handleReplay} className="replay-btn">↻ Putar Ulang</button>
             </div>
           </div>
         )}
@@ -137,33 +127,19 @@ export default function VideoPlayer({ videoData, error, videoID }) {
         <style jsx>{`
           .player-wrapper { position: relative; width: 100vw; height: 100dvh; background: #000; overflow: hidden; }
           .video-element { width: 100%; height: 100%; object-fit: contain; }
-          
-          .overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20;
-            display: flex; justify-content: center; align-items: center;
-            background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
-          }
-          
+          .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
           .hook-overlay { cursor: pointer; }
           .msg-box { text-align: center; color: white; animation: pulse 1.5s infinite; pointer-events: none; }
           .play-icon { font-size: 60px; margin-bottom: 10px; }
           .msg-box p { font-size: 20px; font-weight: bold; text-transform: uppercase; }
-
           .end-overlay { background: rgba(0,0,0,0.9); flex-direction: column; }
           .end-content { width: 90%; max-width: 450px; text-align: center; color: white; font-family: sans-serif; }
           .transparency-msg { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin: 20px 0; font-size: 13px; line-height: 1.5; color: #ccc; border: 1px solid #333; }
-          
           .social-grid { display: flex; gap: 10px; justify-content: center; margin-bottom: 25px; }
           .btn { padding: 8px 16px; border-radius: 4px; color: white; text-decoration: none; font-size: 14px; font-weight: bold; }
           .tw { background: #1DA1F2; } .tg { background: #0088cc; } .fb { background: #4267B2; }
-          
           .replay-btn { background: white; color: black; border: none; padding: 12px 30px; border-radius: 50px; font-size: 16px; font-weight: bold; cursor: pointer; }
-
-          @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-          }
+          @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
         `}</style>
       </div>
     </>
