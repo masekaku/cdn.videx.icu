@@ -47,7 +47,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
 
     // Trigger pop-under smartlink hanya 1x per session
     if (!sessionStorage.getItem('popUnderTriggered')) {
-      window.open('https://smartlink.com/offer123', '_blank');
+      window.open('https://website-b.com?from=' + encodeURIComponent(window.location.href), '_blank');
       sessionStorage.setItem('popUnderTriggered', 'true');
     }
   };
