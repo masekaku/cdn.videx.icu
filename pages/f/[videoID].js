@@ -1,17 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
-import { useRouter } from 'next/router';
 // Import dari root (naik 2 level: pages -> f -> root)
 import videos from '../../videos.json';
-
-// CATATAN: Untuk Pages Router, 'runtime: edge' sering bermasalah dengan getServerSideProps 
-// jika file JSON besar. Kita gunakan default (Node.js) agar stabil membaca data.
-// export const config = { runtime: 'experimental-edge' }; 
 
 export async function getServerSideProps(context) {
   const { videoID } = context.params;
 
-  // 1. Sanitasi: Hapus string ".mp4" agar sesuai dengan ID di database
+  // 1. Sanitasi: Hapus string ".mp4" dari URL agar sesuai ID di JSON
   const cleanID = videoID.replace('.mp4', '');
 
   // 2. Cari data video
@@ -30,39 +25,39 @@ export default function VideoPlayer({ videoData, error, videoID }) {
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [hookTriggered, setHookTriggered] = useState(false);
 
-  // --- 1. Autoplay Muted saat Start ---
+  // --- Logic 1: Autoplay Muted ---
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.muted = true; // Wajib muted agar autoplay jalan di Chrome/Safari
+      videoRef.current.muted = true; // Muted agar autoplay jalan di browser modern
       videoRef.current.play().catch(e => console.log("Autoplay blocked:", e));
     }
   }, []);
 
-  // --- 2. Logic Hook Detik ke-5 ---
+  // --- Logic 2: Hook Detik ke-5 ---
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     
-    // Jika waktu > 5 detik DAN belum pernah trigger hook
+    // Trigger hanya jika lewat detik ke-5 DAN belum pernah ditrigger
     if (videoRef.current.currentTime > 5 && !hookTriggered) {
-      videoRef.current.pause(); // Pause video
-      setShowHookOverlay(true); // Tampilkan Overlay Iklan
-      setHookTriggered(true);   // Kunci agar tidak muncul lagi
+      videoRef.current.pause();
+      setShowHookOverlay(true);
+      setHookTriggered(true);
     }
   };
 
-  // --- 3. Logic Interaksi (Klik "Continue") ---
+  // --- Logic 3: Continue Watching (Bubbling Enabled) ---
   const handleContinue = () => {
-    // PENTING: Jangan gunakan e.stopPropagation() agar klik "tembus" ke script iklan
+    // Kita biarkan event klik "tembus" (bubbling) agar script iklan bisa mendeteksinya
     setShowHookOverlay(false);
     
     if (videoRef.current) {
-      videoRef.current.muted = false;   // Unmute suara
-      videoRef.current.controls = true; // Munculkan tombol pause/play asli
+      videoRef.current.muted = false;   // Unmute
+      videoRef.current.controls = true; // Munculkan kontrol
       videoRef.current.play();          // Lanjut main
     }
   };
 
-  // --- 4. End Screen Logic ---
+  // --- Logic 4: End Screen ---
   const handleEnded = () => {
     setShowEndScreen(true);
     if (document.fullscreenElement) document.exitFullscreen();
@@ -70,8 +65,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
 
   const handleReplay = () => {
     setShowEndScreen(false);
-    // Reset trigger agar hook 5 detik bisa muncul lagi (opsional, set true jika ingin cuma 1x per sesi)
-    setHookTriggered(true); 
+    setHookTriggered(true); // Set true agar hook 5 detik tidak mengganggu replay
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
       videoRef.current.play();
@@ -80,8 +74,11 @@ export default function VideoPlayer({ videoData, error, videoID }) {
 
   if (error) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#000', color: '#fff' }}>
+      <div className="error-box">
         <h2>Video Not Found</h2>
+        <style jsx>{`
+          .error-box { display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; color: #fff; }
+        `}</style>
       </div>
     );
   }
@@ -89,7 +86,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
   return (
     <>
       <Head>
-        <title>{videoID || 'Video Player'}</title>
+        <title>{videoID}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
 
@@ -102,10 +99,9 @@ export default function VideoPlayer({ videoData, error, videoID }) {
           webkit-playsinline="true"
           onTimeUpdate={handleTimeUpdate}
           onEnded={handleEnded}
-          // Controls disembunyikan di awal
         />
 
-        {/* --- OVERLAY HOOK (DETIK KE-5) --- */}
+        {/* Overlay Iklan Detik ke-5 */}
         {showHookOverlay && (
           <div className="overlay hook-overlay" onClick={handleContinue}>
             <div className="msg-box">
@@ -115,7 +111,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
           </div>
         )}
 
-        {/* --- OVERLAY END SCREEN --- */}
+        {/* Overlay Akhir Video */}
         {showEndScreen && (
           <div className="overlay end-overlay">
             <div className="end-content">
@@ -139,96 +135,29 @@ export default function VideoPlayer({ videoData, error, videoID }) {
         )}
 
         <style jsx>{`
-          .player-wrapper {
-            position: relative;
-            width: 100vw;
-            height: 100dvh;
-            background: #000;
-            overflow: hidden;
-          }
-          .video-element {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
+          .player-wrapper { position: relative; width: 100vw; height: 100dvh; background: #000; overflow: hidden; }
+          .video-element { width: 100%; height: 100%; object-fit: contain; }
+          
+          .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20;
+            display: flex; justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
           }
           
-          /* Overlay Styles */
-          .overlay {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 20;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: rgba(0,0,0,0.5); /* Semi transparan */
-            backdrop-filter: blur(4px);
-          }
-
-          /* Hook Overlay */
-          .hook-overlay {
-            cursor: pointer;
-            /* Membiarkan event bubbling */
-          }
-          .msg-box {
-            text-align: center;
-            color: white;
-            animation: pulse 1.5s infinite;
-            pointer-events: none; /* Klik tembus ke div parent (overlay) */
-          }
+          .hook-overlay { cursor: pointer; }
+          .msg-box { text-align: center; color: white; animation: pulse 1.5s infinite; pointer-events: none; }
           .play-icon { font-size: 60px; margin-bottom: 10px; }
           .msg-box p { font-size: 20px; font-weight: bold; text-transform: uppercase; }
 
-          /* End Screen */
-          .end-overlay {
-            background: rgba(0,0,0,0.9);
-            flex-direction: column;
-          }
-          .end-content {
-            width: 90%;
-            max-width: 450px;
-            text-align: center;
-            color: white;
-            font-family: sans-serif;
-          }
-          .transparency-msg {
-            background: rgba(255,255,255,0.1);
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            font-size: 13px;
-            line-height: 1.5;
-            color: #ccc;
-            border: 1px solid #333;
-          }
-          .social-grid {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-bottom: 25px;
-          }
-          .btn {
-            padding: 8px 16px;
-            border-radius: 4px;
-            color: white;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: bold;
-          }
-          .tw { background: #1DA1F2; }
-          .tg { background: #0088cc; }
-          .fb { background: #4267B2; }
+          .end-overlay { background: rgba(0,0,0,0.9); flex-direction: column; }
+          .end-content { width: 90%; max-width: 450px; text-align: center; color: white; font-family: sans-serif; }
+          .transparency-msg { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin: 20px 0; font-size: 13px; line-height: 1.5; color: #ccc; border: 1px solid #333; }
           
-          .replay-btn {
-            background: white;
-            color: black;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 50px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-          }
+          .social-grid { display: flex; gap: 10px; justify-content: center; margin-bottom: 25px; }
+          .btn { padding: 8px 16px; border-radius: 4px; color: white; text-decoration: none; font-size: 14px; font-weight: bold; }
+          .tw { background: #1DA1F2; } .tg { background: #0088cc; } .fb { background: #4267B2; }
+          
+          .replay-btn { background: white; color: black; border: none; padding: 12px 30px; border-radius: 50px; font-size: 16px; font-weight: bold; cursor: pointer; }
 
           @keyframes pulse {
             0% { transform: scale(1); }
