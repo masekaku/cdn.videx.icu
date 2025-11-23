@@ -1,25 +1,19 @@
-import { NextResponse } from 'next/server';
-import videos from '../../data/videos.json';
+import videosData from '../../videos.json';
 
-export const runtime = 'edge';
-
-export default function handler(req) {
-  const url = new URL(req.url);
-  const videoID = url.searchParams.get('videoID');
+export default function handler(req, res) {
+  const { videoID } = req.query;
 
   if (!videoID) {
-    return NextResponse.json(
-      { error: 'Missing videoID parameter' },
-      { status: 400 }
-    );
+    return res.status(400).json({ error: 'videoID parameter is required' });
   }
 
-  const cleanId = videoID.replace(/\.mp4$/i, '');
-  const video = videos.find((v) => v.id === cleanId);
+  const video = videosData.find(v => v.id === videoID);
 
   if (!video) {
-    return NextResponse.json({ error: 'Video not found' }, { status: 404 });
+    return res.status(404).json({ error: 'Video not found' });
   }
 
-  return NextResponse.json(video);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+  return res.json(video);
 }
