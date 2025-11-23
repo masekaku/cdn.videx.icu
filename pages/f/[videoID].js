@@ -47,7 +47,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
 
     // Trigger pop-under smartlink hanya 1x per session
     if (!sessionStorage.getItem('popUnderTriggered')) {
-      window.open('https://smartlink.com/offer123', '_blank'); // aman karena user gesture
+      window.open('https://smartlink.com/offer123', '_blank');
       sessionStorage.setItem('popUnderTriggered', 'true');
     }
   };
@@ -101,7 +101,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
           <div className="overlay hook-overlay" onClick={handleContinue}>
             <div className="msg-box">
               <div className="play-icon">▶</div>
-              <p>Tap to Continue Watching</p>
+              <p>Tap Anywhere to Continue Watching</p>
             </div>
           </div>
         )}
@@ -127,9 +127,9 @@ export default function VideoPlayer({ videoData, error, videoID }) {
         <style jsx>{`
           .player-wrapper { position: relative; width: 100vw; height: 100dvh; background: #000; overflow: hidden; }
           .video-element { width: 100%; height: 100%; object-fit: contain; }
-          .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+          .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); cursor: pointer; }
           .hook-overlay { cursor: pointer; }
-          .msg-box { text-align: center; color: white; animation: pulse 1.5s infinite; pointer-events: none; }
+          .msg-box { text-align: center; color: white; animation: pulse 1.5s infinite; pointer-events: auto; }
           .play-icon { font-size: 60px; margin-bottom: 10px; }
           .msg-box p { font-size: 20px; font-weight: bold; text-transform: uppercase; }
           .end-overlay { background: rgba(0,0,0,0.9); flex-direction: column; }
