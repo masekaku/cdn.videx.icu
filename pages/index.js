@@ -1,32 +1,30 @@
-// Import videos.json dari root (naik 1 level dari pages)
+// IMPORT PENTING: Naik 1 level (..) untuk mencari videos.json di root
 import videos from '../videos.json';
 
-// Kita gunakan runtime default (Node.js) agar pembacaan file JSON besar lebih stabil di Vercel
-// export const config = { runtime: 'experimental-edge' }; 
-
+// Kita pakai runtime default (Nodejs) agar pembacaan file stabil
 export async function getServerSideProps() {
   try {
     // 1. Ambil 1 video acak
-    const randomVideo = videos[Math.floor(Math.random() * videos.length)];
-
-    // 2. Redirect 307 (Temporary) ke format URL baru (/f/ID.mp4)
-    if (randomVideo && randomVideo.id) {
-      return {
-        redirect: {
-          destination: `/f/${randomVideo.id}.mp4`,
-          permanent: false,
-        },
-      };
+    if (!videos || videos.length === 0) {
+        return { props: {} };
     }
     
-    return { props: {} };
-  } catch (e) {
-    console.error(e);
+    const randomVideo = videos[Math.floor(Math.random() * videos.length)];
+
+    // 2. Redirect ke format baru (/f/ID.mp4)
+    return {
+      redirect: {
+        destination: `/f/${randomVideo.id}.mp4`,
+        permanent: false, // 307 Temporary Redirect
+      },
+    };
+  } catch (error) {
+    console.error("Index Error:", error);
     return { props: {} };
   }
 }
 
-// UI Kosong
+// Tidak menampilkan UI apa-apa (Blank)
 export default function Home() {
   return null;
 }
