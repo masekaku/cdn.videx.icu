@@ -1,256 +1,275 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import Head from 'next/head';
 import videos from '../../data/videos.json';
 
-export const runtime = 'edge';
+// Config Edge Runtime
+export const config = {
+  runtime: 'experimental-edge',
+};
 
 export async function getServerSideProps(context) {
-  const { videoID } = context.params || {};
-  const cleanId = (videoID || '').replace(/\.mp4$/i, '');
-  const video = videos.find((v) => v.id === cleanId);
+  const { videoID } = context.params;
 
-  if (!video) {
-    return {
-      notFound: true
-    };
+  // 1. Sanitasi: Hapus string ".mp4" jika ada
+  const cleanID = videoID.replace('.mp4', '');
+
+  // 2. Cari data di JSON
+  const videoData = videos.find((v) => v.id === cleanID);
+
+  if (!videoData) {
+    return { props: { error: true } };
   }
 
-  return {
-    props: {
-      video
-    }
-  };
+  return { props: { videoData } };
 }
 
-function VideoPlayerPage({ video }) {
+export default function VideoPlayer({ videoData, error }) {
+  // State Management
   const videoRef = useRef(null);
-  const [showTapOverlay, setShowTapOverlay] = useState(false);
-  const [hasResumed, setHasResumed] = useState(false);
-  const [showThankYou, setShowThankYou] = useState(false);
+  const [showHookOverlay, setShowHookOverlay] = useState(false); // Overlay detik ke-5
+  const [showEndScreen, setShowEndScreen] = useState(false);     // Overlay akhir
+  const [hookTriggered, setHookTriggered] = useState(false);     // Agar hook cuma muncul sekali
 
-  // Fase 1 & 2: Autoplay muted, lalu berhenti di detik ke-5 dan tampilkan overlay "Tap to Continue"
+  // --- Logic 1: Autoplay Muted & Hide Controls ---
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-
-    // Pastikan mulai dalam keadaan muted + autoplay
-    el.muted = true;
-    const playPromise = el.play();
-    if (playPromise && typeof playPromise.then === 'function') {
-      playPromise.catch(() => {
-        // Jika autoplay diblok, paksa user tap dengan tampilkan overlay
-        setShowTapOverlay(true);
-      });
+    if (videoRef.current) {
+      videoRef.current.muted = true;
+      videoRef.current.play().catch(e => console.log("Autoplay blocked", e));
     }
+  }, []);
 
-    const handleTimeUpdate = () => {
-      if (!hasResumed && el.currentTime >= 5) {
-        el.pause();
-        setShowTapOverlay(true);
-      }
-    };
+  // --- Logic 2: Hook Detik ke-5 ---
+  const handleTimeUpdate = () => {
+    if (!videoRef.current) return;
 
-    el.addEventListener('timeupdate', handleTimeUpdate);
-
-    return () => {
-      el.removeEventListener('timeupdate', handleTimeUpdate);
-    };
-  }, [hasResumed]);
-
-  // Fase 3: Klik overlay/container -> play + unmute
-  const handlePlayerClick = () => {
-    // Hanya respon saat masih di fase "Tap to Continue" dan belum fase "Terima Kasih"
-    if (!showTapOverlay || showThankYou) return;
-
-    const el = videoRef.current;
-    if (!el) return;
-
-    setShowTapOverlay(false);
-    setHasResumed(true);
-
-    el.muted = false;
-    const playPromise = el.play();
-    if (playPromise && typeof playPromise.then === 'function') {
-      playPromise.catch(() => {
-        // Kalau masih gagal meskipun sudah user-interaction, abaikan saja
-      });
+    // Cek jika waktu > 5 detik DAN belum pernah di-trigger
+    if (videoRef.current.currentTime > 5 && !hookTriggered) {
+      videoRef.current.pause(); // Pause otomatis
+      setShowHookOverlay(true); // Munculkan overlay
+      setHookTriggered(true);   // Tandai sudah terjadi
     }
   };
 
-  // Fase 4: Selesai -> Overlay "Terima Kasih"
+  // --- Logic 3: Interaction (Continue Watching) ---
+  const handleContinue = (e) => {
+    // PENTING: Tidak ada e.stopPropagation() agar event bubbling ke script iklan
+    setShowHookOverlay(false);
+    
+    if (videoRef.current) {
+      videoRef.current.muted = false; // Unmute
+      videoRef.current.play();        // Lanjut main
+      videoRef.current.controls = true; // Munculkan kontrol asli (opsional, user friendly)
+    }
+  };
+
+  // --- Logic 4: End Screen ---
   const handleEnded = () => {
-    setShowTapOverlay(false);
-    setShowThankYou(true);
+    setShowEndScreen(true);
+    // Exit fullscreen jika sedang fullscreen
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
   };
+
+  const handleReplay = () => {
+    setShowEndScreen(false);
+    setHookTriggered(true); // Jangan trigger hook 5 detik lagi saat replay
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play();
+    }
+  };
+
+  // --- Error View ---
+  if (error) {
+    return (
+      <div className="error-container">
+        <h1>Video Not Found</h1>
+        <style jsx>{`
+          .error-container { display: flex; height: 100vh; justify-content: center; align-items: center; background: #000; color: white; font-family: sans-serif; }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
-    <div className="player-root">
-      <div className="player-shell" onClick={handlePlayerClick}>
+    <>
+      <Head>
+        <title>Videy Player</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      </Head>
+
+      <div className="player-wrapper">
         <video
           ref={videoRef}
-          src={video.source}
-          className="player-video"
-          autoPlay
-          muted
+          src={videoData.source}
+          className="video-element"
           playsInline
+          webkit-playsinline="true"
+          onTimeUpdate={handleTimeUpdate}
           onEnded={handleEnded}
+          // Controls hidden di awal, bisa dimunculkan setelah interaksi jika mau
         />
 
-        {showTapOverlay && (
-          <div className="overlay overlay-tap">
-            <div className="overlay-content">
-              <p>Tap untuk melanjutkan &amp; menyalakan suara</p>
-              <span className="overlay-sub">Sentuh di mana saja pada layar</span>
+        {/* --- OVERLAY DETIK KE-5 --- */}
+        {showHookOverlay && (
+          <div className="overlay hook-overlay" onClick={handleContinue}>
+            <div className="tap-msg">
+              <div className="icon">▶</div>
+              <p>Tap to Continue Watching</p>
             </div>
           </div>
         )}
 
-        {showThankYou && (
-          <div className="overlay overlay-thankyou">
-            <div className="overlay-content">
-              <h1>Terima Kasih</h1>
-              <p className="overlay-message">
-                Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami
-                untuk menjaga server tetap hidup dan konten tetap gratis.
-              </p>
-              <div className="social-buttons">
-                <a
-                  href="https://twitter.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="social-btn"
-                >
-                  Twitter
-                </a>
-                <a
-                  href="https://instagram.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="social-btn"
-                >
-                  Instagram
-                </a>
-                <a
-                  href="https://t.me"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="social-btn"
-                >
-                  Telegram
-                </a>
+        {/* --- OVERLAY END SCREEN --- */}
+        {showEndScreen && (
+          <div className="overlay end-overlay">
+            <div className="end-content">
+              <h2>Terima Kasih Sudah Menonton</h2>
+              
+              <div className="transparency-msg">
+                <p>Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami untuk menjaga server. Kesabaran Anda sangat kami hargai dan kami harap layanan kami sepadan dengan usaha Anda.</p>
               </div>
+
+              <div className="social-buttons">
+                <a href="https://twitter.com/intent/tweet" target="_blank" rel="noreferrer" className="btn twitter">Twitter</a>
+                <a href="https://telegram.org" target="_blank" rel="noreferrer" className="btn telegram">Telegram</a>
+                <a href="https://facebook.com" target="_blank" rel="noreferrer" className="btn facebook">Facebook</a>
+              </div>
+
+              <button onClick={handleReplay} className="replay-btn">
+                ↻ Putar Ulang Video
+              </button>
             </div>
           </div>
         )}
+
+        <style jsx>{`
+          .player-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 100dvh;
+            background: #000;
+            overflow: hidden;
+          }
+
+          .video-element {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+          }
+
+          /* General Overlay Styles */
+          .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.4); /* Semi transparan */
+            backdrop-filter: blur(2px);
+          }
+
+          /* Hook Overlay (Tap to Continue) */
+          .hook-overlay {
+            cursor: pointer;
+            /* Pastikan event klik tembus/terdeteksi */
+          }
+          .tap-msg {
+            text-align: center;
+            color: #fff;
+            animation: pulse 1.5s infinite;
+          }
+          .tap-msg .icon {
+            font-size: 50px;
+            margin-bottom: 10px;
+          }
+          .tap-msg p {
+            font-size: 18px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+          }
+
+          /* End Screen Overlay */
+          .end-overlay {
+            background: rgba(0, 0, 0, 0.85); /* Lebih gelap */
+            flex-direction: column;
+          }
+          .end-content {
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            color: #fff;
+            font-family: sans-serif;
+          }
+          .end-content h2 {
+            margin-bottom: 20px;
+            font-size: 24px;
+          }
+          
+          /* Pesan Transparansi */
+          .transparency-msg {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #ddd;
+            border: 1px solid rgba(255,255,255,0.1);
+          }
+
+          /* Social Buttons */
+          .social-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 25px;
+          }
+          .btn {
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-decoration: none;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            transition: opacity 0.2s;
+          }
+          .btn:hover { opacity: 0.8; }
+          .twitter { background: #1DA1F2; }
+          .telegram { background: #0088cc; }
+          .facebook { background: #4267B2; }
+
+          /* Replay Button */
+          .replay-btn {
+            padding: 12px 30px;
+            background: #fff;
+            color: #000;
+            border: none;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+          }
+          .replay-btn:active {
+            transform: scale(0.95);
+          }
+
+          @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+        `}</style>
       </div>
-
-      <style jsx>{`
-        .player-root {
-          width: 100vw;
-          height: 100vh;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          background: #000;
-        }
-
-        .player-shell {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          max-width: 900px;
-          max-height: 100vh;
-          cursor: pointer;
-        }
-
-        .player-video {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          background: #000;
-        }
-
-        .overlay {
-          position: absolute;
-          inset: 0;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          text-align: center;
-          padding: 1.5rem;
-        }
-
-        .overlay-tap {
-          background: radial-gradient(
-            circle at center,
-            rgba(0, 0, 0, 0.4),
-            rgba(0, 0, 0, 0.85)
-          );
-        }
-
-        .overlay-thankyou {
-          background: linear-gradient(
-            to bottom,
-            rgba(0, 0, 0, 0.8),
-            rgba(0, 0, 0, 0.95)
-          );
-        }
-
-        .overlay-content {
-          max-width: 480px;
-        }
-
-        .overlay-content p {
-          margin-bottom: 0.5rem;
-        }
-
-        .overlay-sub {
-          font-size: 0.85rem;
-          opacity: 0.8;
-        }
-
-        .overlay-message {
-          margin: 0.75rem 0 1.5rem;
-          font-size: 0.95rem;
-          line-height: 1.5;
-          opacity: 0.9;
-        }
-
-        .social-buttons {
-          display: flex;
-          flex-wrap: wrap;
-          justify-content: center;
-          gap: 0.75rem;
-        }
-
-        .social-btn {
-          padding: 0.5rem 1.1rem;
-          border-radius: 999px;
-          border: 1px solid rgba(255, 255, 255, 0.45);
-          font-size: 0.9rem;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          background: rgba(255, 255, 255, 0.05);
-          transition: background 0.2s ease, transform 0.1s ease;
-        }
-
-        .social-btn:hover {
-          background: rgba(255, 255, 255, 0.14);
-          transform: translateY(-1px);
-        }
-
-        @media (max-width: 768px) {
-          .overlay-message {
-            font-size: 0.85rem;
-          }
-
-          .social-btn {
-            font-size: 0.8rem;
-            padding: 0.45rem 0.9rem;
-          }
-        }
-      `}</style>
-    </div>
+    </>
   );
 }
-
-export default VideoPlayerPage;
