@@ -1,19 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
-// IMPORT PENTING: Naik 2 level (../..) dari 'pages/f' ke 'root'
+// Import dari root (naik 2 level: pages -> f -> root)
 import videos from '../../videos.json';
 
 export async function getServerSideProps(context) {
   const { videoID } = context.params;
 
-  // 1. Sanitasi: Hapus ".mp4" agar cocok dengan ID di JSON
-  // Contoh: URL "abc.mp4" -> ID "abc"
-  const cleanID = videoID ? videoID.replace('.mp4', '') : '';
+  // 1. Sanitasi: Hapus string ".mp4" dari URL agar sesuai ID di JSON
+  const cleanID = videoID.replace('.mp4', '');
 
-  // 2. Cari data di database
+  // 2. Cari data video
   const videoData = videos.find((v) => v.id === cleanID);
 
-  // Jika tidak ketemu, kirim sinyal error
   if (!videoData) {
     return { props: { error: true } };
   }
@@ -23,71 +21,63 @@ export async function getServerSideProps(context) {
 
 export default function VideoPlayer({ videoData, error, videoID }) {
   const videoRef = useRef(null);
-  
-  // State untuk Iklan & End Screen
   const [showHookOverlay, setShowHookOverlay] = useState(false);
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [hookTriggered, setHookTriggered] = useState(false);
 
-  // --- Logic 1: Autoplay Muted (Wajib Muted agar jalan di HP) ---
+  // --- Logic 1: Autoplay Muted ---
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.muted = true;
-      videoRef.current.play().catch(err => console.log("Autoplay blocked:", err));
+      videoRef.current.muted = true; // Muted agar autoplay jalan di browser modern
+      videoRef.current.play().catch(e => console.log("Autoplay blocked:", e));
     }
   }, []);
 
   // --- Logic 2: Hook Detik ke-5 ---
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
-
-    // Jika waktu > 5 detik DAN belum pernah trigger iklan
+    
+    // Trigger hanya jika lewat detik ke-5 DAN belum pernah ditrigger
     if (videoRef.current.currentTime > 5 && !hookTriggered) {
-      videoRef.current.pause(); // Pause video
-      setShowHookOverlay(true); // Munculkan overlay
-      setHookTriggered(true);   // Kunci agar tidak muncul lagi sesi ini
+      videoRef.current.pause();
+      setShowHookOverlay(true);
+      setHookTriggered(true);
     }
   };
 
-  // --- Logic 3: Tombol "Continue Watching" ---
+  // --- Logic 3: Continue Watching (Bubbling Enabled) ---
   const handleContinue = () => {
-    // Overlay hilang
+    // Kita biarkan event klik "tembus" (bubbling) agar script iklan bisa mendeteksinya
     setShowHookOverlay(false);
     
-    // Video lanjut main + SUARA NYALA
     if (videoRef.current) {
-      videoRef.current.muted = false;
-      videoRef.current.controls = true; // Munculkan kontrol play/pause asli
-      videoRef.current.play();
+      videoRef.current.muted = false;   // Unmute
+      videoRef.current.controls = true; // Munculkan kontrol
+      videoRef.current.play();          // Lanjut main
     }
   };
 
-  // --- Logic 4: Video Selesai (End Screen) ---
+  // --- Logic 4: End Screen ---
   const handleEnded = () => {
     setShowEndScreen(true);
-    // Keluar fullscreen otomatis jika sedang fullscreen
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    }
+    if (document.fullscreenElement) document.exitFullscreen();
   };
 
   const handleReplay = () => {
     setShowEndScreen(false);
-    // Kita set hookTriggered = true agar iklan 5 detik TIDAK muncul lagi saat replay
-    // Jika ingin muncul lagi, ubah jadi setHookTriggered(false)
+    setHookTriggered(true); // Set true agar hook 5 detik tidak mengganggu replay
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
       videoRef.current.play();
     }
   };
 
-  // Tampilan Error jika video tidak ada
   if (error) {
     return (
-      <div className="error-container">
-        <h1>Video Not Found</h1>
+      <div className="error-box">
+        <h2>Video Not Found</h2>
         <style jsx>{`
-          .error-container { display: flex; height: 100vh; justify-content: center; align-items: center; background: #000; color: white; font-family: sans-serif; }
+          .error-box { display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; color: #fff; }
         `}</style>
       </div>
     );
@@ -97,6 +87,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
     <>
       <Head>
         <title>{videoID}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
 
       <div className="player-wrapper">
@@ -110,17 +101,17 @@ export default function VideoPlayer({ videoData, error, videoID }) {
           onEnded={handleEnded}
         />
 
-        {/* --- OVERLAY IKLAN (Detik 5) --- */}
+        {/* Overlay Iklan Detik ke-5 */}
         {showHookOverlay && (
           <div className="overlay hook-overlay" onClick={handleContinue}>
             <div className="msg-box">
-              <div className="icon">▶</div>
+              <div className="play-icon">▶</div>
               <p>Tap to Continue Watching</p>
             </div>
           </div>
         )}
 
-        {/* --- OVERLAY END SCREEN --- */}
+        {/* Overlay Akhir Video */}
         {showEndScreen && (
           <div className="overlay end-overlay">
             <div className="end-content">
@@ -130,7 +121,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
                 <p>Iklan mungkin menyebalkan, tetapi itu satu-satunya cara kami untuk menjaga server. Kesabaran Anda sangat kami hargai dan kami harap layanan kami sepadan dengan usaha Anda.</p>
               </div>
 
-              <div className="social-buttons">
+              <div className="social-grid">
                 <a href="https://twitter.com/intent/tweet" target="_blank" className="btn tw">Twitter</a>
                 <a href="https://telegram.org" target="_blank" className="btn tg">Telegram</a>
                 <a href="https://facebook.com" target="_blank" className="btn fb">Facebook</a>
@@ -143,51 +134,35 @@ export default function VideoPlayer({ videoData, error, videoID }) {
           </div>
         )}
 
-        {/* Styling CSS Lokal */}
         <style jsx>{`
-          .player-wrapper {
-            position: relative; width: 100vw; height: 100dvh; background: #000; overflow: hidden;
-          }
-          .video-element {
-            width: 100%; height: 100%; object-fit: contain;
+          .player-wrapper { position: relative; width: 100vw; height: 100dvh; background: #000; overflow: hidden; }
+          .video-element { width: 100%; height: 100%; object-fit: contain; }
+          
+          .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20;
+            display: flex; justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
           }
           
-          /* Overlay Umum */
-          .overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 50;
-            display: flex; justify-content: center; align-items: center;
-            background: rgba(0,0,0,0.4); backdrop-filter: blur(5px);
-          }
-
-          /* Hook Overlay Styles */
           .hook-overlay { cursor: pointer; }
           .msg-box { text-align: center; color: white; animation: pulse 1.5s infinite; pointer-events: none; }
-          .icon { font-size: 60px; margin-bottom: 15px; }
-          .msg-box p { font-size: 20px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+          .play-icon { font-size: 60px; margin-bottom: 10px; }
+          .msg-box p { font-size: 20px; font-weight: bold; text-transform: uppercase; }
 
-          /* End Screen Styles */
           .end-overlay { background: rgba(0,0,0,0.9); flex-direction: column; }
-          .end-content { width: 90%; max-width: 500px; text-align: center; color: white; font-family: sans-serif; }
+          .end-content { width: 90%; max-width: 450px; text-align: center; color: white; font-family: sans-serif; }
+          .transparency-msg { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin: 20px 0; font-size: 13px; line-height: 1.5; color: #ccc; border: 1px solid #333; }
           
-          .transparency-msg {
-            background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin: 20px 0;
-            font-size: 13px; line-height: 1.5; color: #ddd; border: 1px solid #444;
-          }
-          
-          .social-buttons { display: flex; gap: 10px; justify-content: center; margin-bottom: 25px; }
-          .btn { padding: 10px 20px; border-radius: 5px; color: white; text-decoration: none; font-weight: bold; font-size: 14px; }
+          .social-grid { display: flex; gap: 10px; justify-content: center; margin-bottom: 25px; }
+          .btn { padding: 8px 16px; border-radius: 4px; color: white; text-decoration: none; font-size: 14px; font-weight: bold; }
           .tw { background: #1DA1F2; } .tg { background: #0088cc; } .fb { background: #4267B2; }
           
-          .replay-btn {
-            background: white; color: black; border: none; padding: 12px 35px; border-radius: 50px;
-            font-size: 16px; font-weight: bold; cursor: pointer; transition: transform 0.2s;
-          }
-          .replay-btn:active { transform: scale(0.95); }
+          .replay-btn { background: white; color: black; border: none; padding: 12px 30px; border-radius: 50px; font-size: 16px; font-weight: bold; cursor: pointer; }
 
           @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
           }
         `}</style>
       </div>
