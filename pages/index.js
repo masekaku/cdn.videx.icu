@@ -1,26 +1,24 @@
 import videos from '../data/videos.json';
 
-export const runtime = 'edge';
+// Config Edge Runtime
+export const config = {
+  runtime: 'experimental-edge',
+};
 
 export async function getServerSideProps() {
-  const randomIndex = Math.floor(Math.random() * videos.length);
-  const video = videos[randomIndex];
+  // 1. Ambil 1 video acak langsung dari import (tanpa fs/fetch)
+  const randomVideo = videos[Math.floor(Math.random() * videos.length)];
 
-  if (!video) {
-    return {
-      notFound: true
-    };
-  }
-
+  // 2. Redirect 307 (Temporary) ke format baru dengan akhiran .mp4
   return {
     redirect: {
-      destination: `/f/${video.id}.mp4`,
-      permanent: false // Next akan menggunakan status 307 untuk redirect non-permanent
-    }
+      destination: `/f/${randomVideo.id}.mp4`,
+      permanent: false,
+    },
   };
 }
 
-export default function IndexPage() {
-  // User tidak melihat apa-apa, langsung redirect dari getServerSideProps
+// UI Return Null (Tanpa Tampilan)
+export default function Home() {
   return null;
 }
