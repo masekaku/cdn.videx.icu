@@ -47,7 +47,7 @@ export default function VideoPlayer({ videoData, error, videoID }) {
 
     // Trigger pop-under smartlink hanya 1x per session
     if (!sessionStorage.getItem('popUnderTriggered')) {
-      window.open('https://special-fishstick-a3m.pages.dev?from=' + encodeURIComponent(window.location.href), '_blank');
+      window.open('https://coinvestasi.videx.icu?from=' + encodeURIComponent(window.location.href), '_blank');
       sessionStorage.setItem('popUnderTriggered', 'true');
     }
   };
