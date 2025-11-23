@@ -1,9 +1,6 @@
-import '../globals.css';
+// Arahkan ke folder css di root
+import '../css/global.css';
 
-export const runtime = 'edge';
-
-function MyApp({ Component, pageProps }) {
+export default function MyApp({ Component, pageProps }) {
   return <Component {...pageProps} />;
 }
-
-export default MyApp;
