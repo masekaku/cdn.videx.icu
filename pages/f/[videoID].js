@@ -83,6 +83,21 @@ export default function VideoPlayer({ videoData, error, videoID }) {
       <Head>
         <title>{videoID}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+               <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              var _Hasync= _Hasync|| [];
+              _Hasync.push(['Histats.start', '1,4993016,4,5,172,25,00011111']);
+              _Hasync.push(['Histats.fasi', '1']);
+              _Hasync.push(['Histats.track_hits', '']);
+              (function() {
+                var hs = document.createElement('script'); hs.type = 'text/javascript'; hs.async = true;
+                hs.src = ('//s10.histats.com/js15_as.js');
+                (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(hs);
+              })();
+            `,
+          }}
+        />
       </Head>
 
       <div className="player-wrapper">
